@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     .eq("job_id", job_id);
 
   // Increment tech's completed job count
-  await supabase.rpc("increment_jobs_done", { tech_phone: techPhone }).catch(() => {});
+  try { await supabase.rpc("increment_jobs_done", { tech_phone: techPhone }); } catch {}
 
   // Notify customer
   try {
