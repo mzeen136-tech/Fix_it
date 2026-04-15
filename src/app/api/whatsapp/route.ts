@@ -5,6 +5,9 @@ import { handleCustomerIntake }     from "@/lib/flows/customerIntake";
 import { handleTechnicianBid }      from "@/lib/flows/technicianBid";
 import { handleCustomerAcceptance } from "@/lib/flows/customerAccept";
 import { sendWhatsAppMessage }      from "@/lib/whatsapp";
+import { isGreeting, looksLikeAdminCommand } from "@/lib/gemini";
+
+// ── GET — Meta webhook verification ──────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -18,119 +21,141 @@ export async function GET(req: NextRequest) {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
+// ── POST — Incoming message router ───────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   try {
     const body    = await req.json();
     const value   = body?.entry?.[0]?.changes?.[0]?.value;
     const message = value?.messages?.[0];
-    if (!message) return NextResponse.json({ status: "ok" }, { status: 200 });
+
+    // Ignore delivery receipts, read notifications, etc.
+    if (!message) return NextResponse.json({ status:"ok" }, { status:200 });
 
     const senderPhone: string = message.from;
-    const messageType: string = message.type;
+    const messageType: string = message.type; // text | image | audio | document
+    const messageText: string = message.text?.body?.trim() ?? "";
 
-    // Extract text — also pull caption from media messages so we don't lose info
-    const messageText: string =
-      message.text?.body?.trim() ||
-      message.image?.caption?.trim() ||
-      message.video?.caption?.trim() ||
-      message.document?.caption?.trim() ||
-      "";
+    if (!senderPhone) return NextResponse.json({ status:"ok" }, { status:200 });
 
-    // If truly no text and it's a media type, pass a typed placeholder
-    const effectiveText: string = messageText || (messageType !== "text" ? `[${messageType} received]` : "");
+    console.log(`[SnapFix] ${messageType} from ${senderPhone}: "${messageText}"`);
 
-    if (!senderPhone) return NextResponse.json({ status: "ok" }, { status: 200 });
+    // ── Step 1: Admin check — ALWAYS first, before any DB lookup ─────────────
+    // Critical: admin phone may also be registered as a tech.
+    // Admin commands must never be routed to the tech bid flow.
 
-    console.log(`[SnapFix] ${messageType} from ${senderPhone}: "${effectiveText}"`);
-
-    const isAdmin  = senderPhone === process.env.ADMIN_PHONE;
-    const isAccept = effectiveText.toUpperCase().startsWith("ACCEPT");
-
-    // ── Identify if sender is a registered technician ────────────────────────
-    let isTech = false;
-    let techStatus: string | null = null;
-
-    if (!isAdmin) {
-      const { data } = await supabase
-        .from("technicians")
-        .select("phone_number, approval_status")
-        .eq("phone_number", senderPhone)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (data) {
-        techStatus = data.approval_status;
-        isTech = data.approval_status === "approved";
-      }
-
-      // Registered but not yet approved — tell them to wait
-      if (techStatus === "pending") {
-        await sendWhatsAppMessage(
-          senderPhone,
-          "⏳ Your SnapFix account is pending approval. You'll be notified once activated.\n\nآپ کا اکاؤنٹ زیر جائزہ ہے۔"
-        );
-        return NextResponse.json({ status: "ok" }, { status: 200 });
-      }
-
-      // Unknown sender sending a bid-like message → redirect to register
-      if (!data && !isAdmin) {
-        const looksLikeBid = /\b(rs\.?|pkr|rupee|\d{3,})\b/i.test(effectiveText) &&
-                             /\b(hour|hr|min|minute|eta|arrive)\b/i.test(effectiveText);
-        if (looksLikeBid) {
-          const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/tech/register`;
-          await sendWhatsAppMessage(
-            senderPhone,
-            `🔧 Want to receive jobs on SnapFix?\n\nRegister as a technician here:\n${portalUrl}\n\nکام پانے کے لیے رجسٹر کریں:\n${portalUrl}`
-          );
-          return NextResponse.json({ status: "ok" }, { status: 200 });
-        }
-      }
-    }
-
-    // ── Main Router ───────────────────────────────────────────────────────────
+    const isAdmin = senderPhone === process.env.ADMIN_PHONE;
 
     if (isAdmin) {
-      if (effectiveText.startsWith("/add")) {
-        // Admin adding a technician
-        await handleAdminCommand(senderPhone, effectiveText);
-      } else if (effectiveText.startsWith("/")) {
-        // Admin sent an unknown / command — give helpful feedback
-        await sendWhatsAppMessage(
-          senderPhone,
-          "❓ Unknown command.\n\nAvailable commands:\n*/add Trade, Name, 923XXXXXXXXX, City*\n\nExample:\n/add HVAC, Dawood, 923001234567, Islamabad"
+      if (messageText.toLowerCase().startsWith("/add")) {
+        await handleAdminCommand(senderPhone, messageText);
+      } else if (messageText.startsWith("/")) {
+        // Unknown slash command from admin
+        await sendWhatsAppMessage(senderPhone,
+          `❓ Unknown command.\n\nAvailable commands:\n/add Trade, Name, 923XXXXXXXXX, City\n\nExample:\n/add Plumber, Ali, 923001234567, Islamabad`
         );
       } else {
-        // Admin sent a plain message — treat as test/no-op, acknowledge it
-        await sendWhatsAppMessage(
-          senderPhone,
-          "👋 Admin panel active. Use */add Trade, Name, Phone, City* to register a technician."
-        );
+        // Admin sending a plain message — treat as customer for testing
+        await handleCustomerIntake(senderPhone, messageText);
       }
+      return NextResponse.json({ status:"ok" }, { status:200 });
+    }
 
-    } else if (isTech) {
-      if (isAccept) {
-        // Technician tried to accept — clarify they're not a customer
-        await sendWhatsAppMessage(
-          senderPhone,
-          "ℹ️ You're registered as a *technician* on SnapFix. Only customers can accept bids.\n\nTo place a bid, simply reply with your *price and ETA*.\nExample: Rs. 2500, 30 minutes"
+    // ── Step 2: Block non-text messages early ─────────────────────────────────
+    // Image/audio/doc with no prior conversation context → ask for text
+
+    if (messageType !== "text") {
+      const { data: conv } = await supabase
+        .from("conversation_state")
+        .select("state")
+        .eq("phone", senderPhone)
+        .maybeSingle();
+
+      if (!conv || conv.state === "idle") {
+        await sendWhatsAppMessage(senderPhone,
+          "📸 We received your file! Please *describe your problem in text* so we can find you the right technician.\n\nExample: \"My kitchen pipe is leaking\" or \"AC is not cooling\""
+        );
+        return NextResponse.json({ status:"ok" }, { status:200 });
+      }
+      // If they're mid-conversation, continue with empty text — state machine handles it
+    }
+
+    // ── Step 3: Block slash commands from non-admins ──────────────────────────
+    if (looksLikeAdminCommand(messageText)) {
+      await sendWhatsAppMessage(senderPhone,
+        "❌ That command is not recognised. If you need help, just describe your home service problem!"
+      );
+      return NextResponse.json({ status:"ok" }, { status:200 });
+    }
+
+    // ── Step 4: Tech lookup ───────────────────────────────────────────────────
+
+    const { data: techRow } = await supabase
+      .from("technicians")
+      .select("phone_number, approval_status")
+      .eq("phone_number", senderPhone)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    const isTech = !!techRow && techRow.approval_status === "approved";
+
+    if (techRow && techRow.approval_status === "pending") {
+      await sendWhatsAppMessage(senderPhone,
+        "⏳ Your SnapFix account is pending admin approval.\nYou'll be notified on WhatsApp once activated.\n\nآپ کا اکاؤنٹ زیر جائزہ ہے۔"
+      );
+      return NextResponse.json({ status:"ok" }, { status:200 });
+    }
+
+    // Unregistered person sending what looks like a bid — redirect to portal
+    if (!techRow && !isTech && messageText.match(/^(rs\.|rupees?|hazar|rupe|pkr|\d{3,5})/i)) {
+      const url = `${process.env.NEXT_PUBLIC_APP_URL}/tech/register`;
+      await sendWhatsAppMessage(senderPhone,
+        `🔧 Want to receive jobs on SnapFix?\n\nRegister as a technician:\n${url}\n\nکام پانے کے لیے رجسٹر کریں:\n${url}`
+      );
+      return NextResponse.json({ status:"ok" }, { status:200 });
+    }
+
+    // ── Step 5: Route ─────────────────────────────────────────────────────────
+
+    const isAccept = messageText.toUpperCase().startsWith("ACCEPT");
+
+    if (!isTech && isAccept) {
+      await handleCustomerAcceptance(senderPhone, messageText);
+
+    } else if (!isTech) {
+      // Handle greetings without burning a Gemini call
+      if (isGreeting(messageText) && !await hasOpenConversation(senderPhone)) {
+        await sendWhatsAppMessage(senderPhone,
+          "Assalam o Alaikum! 👋 Welcome to *SnapFix*.\n\n" +
+          "I connect you with trusted home service technicians — Plumbers, Electricians, HVAC, Carpenters, and Painters.\n\n" +
+          "Just describe your problem and share your city/area to get started!\n\n" +
+          "_واٹس ایپ پر بھروسہ مند تکنیشن سے جڑیں_"
         );
       } else {
-        // Normal technician bid or message
-        await handleTechnicianBid(senderPhone, effectiveText);
+        await handleCustomerIntake(senderPhone, messageText);
       }
 
-    } else if (!isAdmin && isAccept) {
-      // Customer accepting a bid
-      await handleCustomerAcceptance(senderPhone, effectiveText);
+    } else if (isTech && !isAccept) {
+      await handleTechnicianBid(senderPhone, messageText);
 
     } else {
-      // Regular customer intake
-      await handleCustomerIntake(senderPhone, effectiveText);
+      console.log(`[SnapFix] No route matched for ${senderPhone}`);
     }
 
   } catch (err) {
     console.error("[SnapFix] Webhook error:", err);
   }
+  return NextResponse.json({ status:"ok" }, { status:200 });
+}
 
-  return NextResponse.json({ status: "ok" }, { status: 200 });
+// ── Helper: check if customer has an open conversation ────────────────────────
+
+async function hasOpenConversation(phone: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("conversation_state")
+    .select("state")
+    .eq("phone", phone)
+    .neq("state", "idle")
+    .maybeSingle();
+  return !!data;
 }

@@ -1,35 +1,20 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY is missing");
-}
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const genAI2 = new GoogleGenerativeAI(process.env.GEMINI_BACKUP_API_KEY || process.env.GEMINI_API_KEY!);
 
-const genAI = new GoogleGenerativeAI(apiKey);
+// Primary: gemini-2.5-flash-lite (fast, cheap, your preference)
+// Backup:  gemini-2.5-flash (more capable, used if primary fails)
+const primaryModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite-preview-06-17" });
+const backupModel  = genAI2.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
 
-const liteModel = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash-lite",
-});
-
-const flashModel = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash",
-});
-
-export interface JobExtraction {
-  trade: string;
-  summary: string;
-}
-
-export interface BidExtraction {
-  price: string;
-  eta: string;
-}
-
+export interface JobExtraction { trade: string; summary: string; }
+export interface BidExtraction  { price: string; eta: string; }
 export interface MessageAnalysis {
   language: "english" | "urdu";
-  is_general_question: boolean;
   has_problem: boolean;
   has_location: boolean;
+  is_general_question: boolean;
   trade: string;
   summary: string;
   city: string;
@@ -37,425 +22,167 @@ export interface MessageAnalysis {
   follow_up: string;
 }
 
-type CacheEntry<T> = {
-  value: T;
-  ts: number;
-};
-
-const CACHE_TTL_MS = 10 * 60 * 1000;
-const MAX_CACHE_ENTRIES = 500;
-
-const analysisCache = new Map<string, CacheEntry<MessageAnalysis>>();
-const jobCache = new Map<string, CacheEntry<JobExtraction>>();
-const bidCache = new Map<string, CacheEntry<BidExtraction>>();
-
-const TRADE_KEYWORDS: Record<string, string[]> = {
-  HVAC: [
-    "ac",
-    "a/c",
-    "air condition",
-    "hvac",
-    "cooling",
-    "heat",
-    "heater",
-    "heating",
-    "geyser",
-    "geysir",
-    "fan",
-    "air cool",
-    "leakage from ac",
-    "ac not",
-    "gas leakage",
-  ],
-  Plumber: [
-    "water",
-    "pipe",
-    "leak",
-    "tap",
-    "flush",
-    "toilet",
-    "drain",
-    "sewage",
-    "plumb",
-    "nali",
-    "pani",
-  ],
-  Electrician: [
-    "electric",
-    "light",
-    "power",
-    "wiring",
-    "switch",
-    "socket",
-    "mcb",
-    "short circuit",
-    "bijli",
-    "current",
-    "voltage",
-  ],
-  Carpenter: ["door", "window", "wood", "cabinet", "furniture", "carpenter", "almari", "darwaza"],
-  Painter: ["paint", "wall", "colour", "color", "crack", "plaster"],
-};
-
-const CITY_KEYWORDS = [
-  "islamabad",
-  "rawalpindi",
-  "lahore",
-  "karachi",
-  "peshawar",
-  "multan",
-  "faisalabad",
-  "quetta",
-  "abbottabad",
-  "murree",
-];
-
-const AREA_KEYWORDS = [
-  "barakhu",
-  "barakau",
-  "f-6",
-  "f-7",
-  "f-8",
-  "f-10",
-  "g-9",
-  "g-10",
-  "g-11",
-  "dha",
-  "bahria",
-  "gulberg",
-  "johar",
-  "clifton",
-  "defence",
-  "blue area",
-  "i-8",
-  "i-9",
-  "i-10",
-  "pwd",
-  "cbr",
-  "satellite town",
-  "pindi",
-];
-
-const FAQ_WORDS = [
-  "what service",
-  "what do you",
-  "how does",
-  "how do you",
-  "what trades",
-  "like what",
-  "tell me about",
-  "what kind",
-  "what type",
-  "kya karte",
-  "kya services",
-  "explain",
-  "introduce",
-  "about you",
-  "what is this",
-  "who are you",
-  "what are you",
-  "weekend",
-  "timing",
-  "hours",
-  "coverage",
-  "area serve",
-];
-
-function normalizeKey(text: string) {
-  return text.trim().toLowerCase().replace(/\s+/g, " ");
-}
+const VALID_TRADES = ["Plumber","Electrician","HVAC","Carpenter","Painter","Other"] as const;
 
 function clean(raw: string) {
-  return raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  return raw.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
 }
 
-function extractJsonObject(raw: string): string {
-  const cleaned = clean(raw);
+// ── Core: try primary model, fall back to backup on any error ─────────────────
 
+async function generate(prompt: string): Promise<string> {
   try {
-    JSON.parse(cleaned);
-    return cleaned;
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error(`No JSON object found in model response: ${cleaned}`);
-    return match[0];
+    const result = await primaryModel.generateContent(prompt);
+    const text = result.response.text();
+    if (!text?.trim()) throw new Error("Empty response from primary");
+    console.log("[Gemini] Primary model used");
+    return clean(text);
+  } catch (primaryErr) {
+    console.warn("[Gemini] Primary failed, trying backup:", primaryErr);
+    try {
+      const result = await backupModel.generateContent(prompt);
+      const text = result.response.text();
+      if (!text?.trim()) throw new Error("Empty response from backup");
+      console.log("[Gemini] Backup model used");
+      return clean(text);
+    } catch (backupErr) {
+      console.error("[Gemini] Both models failed:", backupErr);
+      throw backupErr;
+    }
   }
 }
 
-function getCached<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > CACHE_TTL_MS) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.value;
-}
-
-function setCached<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T) {
-  if (cache.size >= MAX_CACHE_ENTRIES) {
-    const firstKey = cache.keys().next().value;
-    if (firstKey) cache.delete(firstKey);
-  }
-  cache.set(key, { value, ts: Date.now() });
-}
-
-function isUrduScript(text: string) {
-  return /[\u0600-\u06FF]/.test(text);
-}
-
-function detectLanguage(text: string): "english" | "urdu" {
-  if (isUrduScript(text)) return "urdu";
-
-  const lower = text.toLowerCase();
-  const urduMarkers = ["kya", "mera", "meri", "nahi", "nahi", "masla", "masla hai", "pani", "bijli", "qarz", "darwaza", "khula", "band", "hai", "acha", "theek"];
-  const hitCount = urduMarkers.reduce((count, word) => count + (lower.includes(word) ? 1 : 0), 0);
-
-  return hitCount >= 2 ? "urdu" : "english";
-}
-
-function isGeneralQuestion(text: string) {
-  const lower = text.toLowerCase();
-  return FAQ_WORDS.some((k) => lower.includes(k));
-}
-
-function detectTrade(text: string): string {
-  const lower = text.toLowerCase();
-  for (const [trade, keywords] of Object.entries(TRADE_KEYWORDS)) {
-    if (keywords.some((k) => lower.includes(k))) return trade;
-  }
-  return "Other";
-}
-
-function detectCity(text: string): string {
-  const lower = text.toLowerCase();
-  return CITY_KEYWORDS.find((c) => lower.includes(c)) ?? "";
-}
-
-function detectArea(text: string): string {
-  const lower = text.toLowerCase();
-  return AREA_KEYWORDS.find((a) => lower.includes(a)) ?? "";
-}
-
-function makeSummary(text: string) {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  return trimmed.slice(0, 100);
-}
-
-function buildFollowUp(language: "english" | "urdu", missingProblem: boolean, missingLocation: boolean) {
-  if (!missingProblem && !missingLocation) return "";
-
-  if (language === "urdu") {
-    if (missingProblem && missingLocation) return "Aap please masla aur apna city/area bata dein.";
-    if (missingProblem) return "Aap please apna masla thora detail mein bata dein.";
-    return "Aap please apna city aur area bata dein.";
-  }
-
-  if (missingProblem && missingLocation) return "Please share the problem and your city/area.";
-  if (missingProblem) return "Please describe the problem briefly.";
-  return "Please share your city and area.";
-}
-
-function keywordFallback(text: string): MessageAnalysis {
-  const language = detectLanguage(text);
-  const lower = text.toLowerCase();
-
-  const is_general_question = isGeneralQuestion(text);
-  const trade = detectTrade(text);
-  const city = detectCity(text);
-  const area = detectArea(text);
-
-  const has_problem = trade !== "Other" || (!is_general_question && lower.length > 10);
-  const has_location = Boolean(city || area);
-
-  return {
-    language,
-    is_general_question,
-    has_problem,
-    has_location,
-    trade,
-    summary: makeSummary(text),
-    city,
-    area,
-    follow_up: is_general_question ? "" : buildFollowUp(language, !has_problem, !has_location),
-  };
-}
-
-function keywordExtractJob(text: string): JobExtraction {
-  return {
-    trade: detectTrade(text),
-    summary: makeSummary(text),
-  };
-}
-
-function regexExtractBid(text: string): BidExtraction {
-  const lower = text.toLowerCase();
-
-  let price = "Not specified";
-  const priceMatch = lower.match(
-    /(?:rs\.?\s*|pkr\s*|price\s*[:\s]+|rupees?\s*[:\s]*)?(\d[\d,]{2,})(?:\s*(?:rs|pkr|rupees?))?/i,
-  );
-  if (priceMatch) {
-    const num = priceMatch[1].replace(/,/g, "");
-    if (Number(num) >= 100) price = `Rs. ${num}`;
-  }
-
-  let eta = "Not specified";
-  const etaMatch = lower.match(/(?:eta\s*[:\s]+|in\s+)?(\d+)\s*(hour|hr|hrs|minute|min|mins|h\b)/i);
-  if (etaMatch) {
-    const num = etaMatch[1];
-    const unit = etaMatch[2].toLowerCase();
-    eta = unit.startsWith("h") ? `${num} hour${num === "1" ? "" : "s"}` : `${num} minute${num === "1" ? "" : "s"}`;
-  }
-
-  return { price, eta };
-}
-
-async function generateWithFallback(prompt: string) {
-  try {
-    return await liteModel.generateContent(prompt);
-  } catch (liteErr) {
-    console.warn("[Gemini] Flash Lite failed, falling back to Flash:", liteErr);
-    return await flashModel.generateContent(prompt);
-  }
-}
-
-function validateTrade(trade: unknown) {
-  return ["Plumber", "Electrician", "HVAC", "Carpenter", "Painter", "Other"].includes(String(trade));
-}
-
-function validateLanguage(language: unknown): "english" | "urdu" {
-  return language === "urdu" ? "urdu" : "english";
-}
+// ── Full message analysis — customer intake ────────────────────────────────────
 
 export async function analyzeCustomerMessage(text: string): Promise<MessageAnalysis> {
-  const input = text ?? "";
-  const cacheKey = normalizeKey(input);
-  const cached = getCached(analysisCache, cacheKey);
-  if (cached) return cached;
+  const prompt = `You are SnapFix, a WhatsApp home services bot in Pakistan.
+Analyze this customer message carefully: "${text}"
 
-  const heuristic = keywordFallback(input);
+Rules:
+- has_problem = true ONLY if they described a specific home service issue (broken tap, no electricity, AC not cooling, etc.)
+- has_problem = false for greetings (hi, hello, salam), general questions (what services?, how does this work?), or unclear messages
+- is_general_question = true if they are asking about services, how the app works, pricing in general, or anything not a specific job request
+- has_location = true if they mentioned a city, town, area, or neighbourhood in Pakistan
+- summary = describe ONLY the problem itself — do NOT include location words in the summary
+- city = extract only the city/town name (Islamabad, Lahore, Karachi, Barakau, etc.), empty if not mentioned
+- area = neighbourhood or area within a city (DHA, F-7, Gulberg, etc.), empty if not mentioned
+- language = "urdu" if message uses Urdu script OR Roman Urdu (e.g. "Mera AC kharab hai"), otherwise "english"
+- follow_up = warm reply in SAME language customer used, asking ONLY for what is missing
 
-  // Save money on obvious cases.
-  if (heuristic.is_general_question) {
-    setCached(analysisCache, cacheKey, heuristic);
-    return heuristic;
-  }
+Return ONLY valid JSON, no markdown, no explanation:
+{
+  "language": "english",
+  "has_problem": true,
+  "has_location": false,
+  "is_general_question": false,
+  "trade": "HVAC",
+  "summary": "AC is not cooling the room",
+  "city": "",
+  "area": "",
+  "follow_up": "Got it! Which city and area are you in? Example: Islamabad, F-7"
+}
 
-  if (heuristic.trade !== "Other" && heuristic.has_location) {
-    setCached(analysisCache, cacheKey, heuristic);
-    return heuristic;
-  }
+Trade must be exactly one of: Plumber, Electrician, HVAC, Carpenter, Painter, Other`;
 
-  if (input.trim().length < 12) {
-    setCached(analysisCache, cacheKey, heuristic);
-    return heuristic;
-  }
-
-  const prompt = `Classify this SnapFix customer message for Pakistan:\n${JSON.stringify(input)}\n\nReturn JSON with keys: language, is_general_question, has_problem, has_location, trade, summary, city, area, follow_up.\nAllowed trade values: Plumber, Electrician, HVAC, Carpenter, Painter, Other.\nfollow_up must be in the customer's language and should ask only for the missing detail.`;
-
+  let raw = "";
   try {
-    const result = await generateWithFallback(prompt);
-    const raw = extractJsonObject(result.response.text());
-    const parsed = JSON.parse(raw) as Partial<MessageAnalysis>;
-
-    const finalResult: MessageAnalysis = {
-      language: validateLanguage(parsed.language),
-      is_general_question: Boolean(parsed.is_general_question),
-      has_problem: Boolean(parsed.has_problem),
-      has_location: Boolean(parsed.has_location),
-      trade: validateTrade(parsed.trade) ? String(parsed.trade) : "Other",
-      summary: typeof parsed.summary === "string" && parsed.summary.trim() ? parsed.summary.trim().slice(0, 100) : makeSummary(input),
-      city: typeof parsed.city === "string" ? parsed.city.trim() : "",
-      area: typeof parsed.area === "string" ? parsed.area.trim() : "",
-      follow_up: typeof parsed.follow_up === "string" ? parsed.follow_up.trim() : "",
-    };
-
-    if (!finalResult.follow_up) {
-      finalResult.follow_up = finalResult.is_general_question
-        ? ""
-        : buildFollowUp(finalResult.language, !finalResult.has_problem, !finalResult.has_location);
-    }
-
-    setCached(analysisCache, cacheKey, finalResult);
-    return finalResult;
+    raw = await generate(prompt);
+    const parsed = JSON.parse(raw) as MessageAnalysis;
+    if (!(VALID_TRADES as readonly string[]).includes(parsed.trade)) parsed.trade = "Other";
+    parsed.summary = (parsed.summary ?? "").slice(0, 120);
+    // Safety: strip location words from summary if they leaked in
+    parsed.summary = parsed.summary
+      .replace(/\b(barakau|islamabad|lahore|karachi|rawalpindi|dha|f-\d|gulberg)\b/gi, "")
+      .replace(/\s{2,}/g, " ").trim();
+    return parsed;
   } catch (err) {
-    console.error("[Gemini] analyzeCustomerMessage failed, using keyword fallback:", err);
-    setCached(analysisCache, cacheKey, heuristic);
-    return heuristic;
+    console.error("[Gemini] analyzeCustomerMessage failed:", raw, err);
+    return {
+      language: "english", has_problem: false, has_location: false,
+      is_general_question: false, trade: "Other", summary: "",
+      city: "", area: "",
+      follow_up: "Assalam o Alaikum! 👋 Welcome to SnapFix.\n\nPlease describe your home service problem and share your city/area — we'll find you the right technician right away!",
+    };
   }
 }
+
+// ── Job extraction ─────────────────────────────────────────────────────────────
 
 export async function extractJobDetails(text: string): Promise<JobExtraction> {
-  const input = text ?? "";
-  if (!input.trim()) return { trade: "Other", summary: "No description provided" };
+  if (!text?.trim()) return { trade: "Other", summary: "No description provided" };
+  const prompt = `Home services dispatcher in Pakistan. Extract the trade and problem from this message: "${text}"
 
-  const cacheKey = normalizeKey(input);
-  const cached = getCached(jobCache, cacheKey);
-  if (cached) return cached;
+Rules:
+- summary must describe ONLY the problem — no location names
+- trade must be exactly one of: Plumber, Electrician, HVAC, Carpenter, Painter, Other
+- summary under 100 characters
 
-  const heuristic = keywordExtractJob(input);
+Return ONLY valid JSON (no markdown):
+{"trade":"Plumber","summary":"Kitchen tap is leaking under the sink"}`;
 
-  // Use rules for clear cases; reserve AI for ambiguous descriptions.
-  if (heuristic.trade !== "Other" || input.trim().length < 30) {
-    setCached(jobCache, cacheKey, heuristic);
-    return heuristic;
-  }
-
-  const prompt = `Identify the home-service trade from this message and give a short summary.\nMessage: ${JSON.stringify(input)}\n\nReturn JSON with keys: trade, summary.\nAllowed trade values: Plumber, Electrician, HVAC, Carpenter, Painter, Other.`;
-
+  let raw = "";
   try {
-    const result = await generateWithFallback(prompt);
-    const raw = extractJsonObject(result.response.text());
-    const parsed = JSON.parse(raw) as Partial<JobExtraction>;
-
-    const finalResult: JobExtraction = {
-      trade: validateTrade(parsed.trade) ? String(parsed.trade) : heuristic.trade,
-      summary: typeof parsed.summary === "string" && parsed.summary.trim() ? parsed.summary.trim().slice(0, 100) : heuristic.summary,
-    };
-
-    setCached(jobCache, cacheKey, finalResult);
-    return finalResult;
+    raw = await generate(prompt);
+    const e = JSON.parse(raw) as JobExtraction;
+    e.trade = (VALID_TRADES as readonly string[]).includes(e.trade) ? e.trade : "Other";
+    e.summary = (e.summary ?? text).slice(0, 100);
+    return e;
   } catch (err) {
-    console.error("[Gemini] extractJobDetails failed, using keyword fallback:", err);
-    setCached(jobCache, cacheKey, heuristic);
-    return heuristic;
+    console.error("[Gemini] extractJobDetails failed:", raw, err);
+    return { trade: "Other", summary: text.slice(0, 100) };
   }
 }
 
+// ── Bid extraction — handles English, Urdu, Roman Urdu ────────────────────────
+
 export async function extractBidDetails(text: string): Promise<BidExtraction> {
-  const input = text ?? "";
-  if (!input.trim()) return { price: "Not specified", eta: "Not specified" };
+  if (!text?.trim()) return { price: "Not specified", eta: "Not specified" };
+  const prompt = `A technician in Pakistan is replying to a job with their price and arrival time.
+Their message: "${text}"
 
-  const cacheKey = normalizeKey(input);
-  const cached = getCached(bidCache, cacheKey);
-  if (cached) return cached;
+IMPORTANT: The message may be in English, Urdu, or Roman Urdu. Extract accordingly:
+- "Do hazar" or "2 hazar" = Rs. 2000
+- "Ek hazar" or "1000" = Rs. 1000
+- "teen hazar" = Rs. 3000
+- "Das minute" or "10 minute" = 10 minutes
+- "Aadha ghanta" = 30 minutes
+- "Ek ghanta" = 1 hour
+- "Pachas minute" = 50 minutes
 
-  const regexResult = regexExtractBid(input);
+Return ONLY valid JSON (no markdown):
+{"price":"Rs. 2000","eta":"10 minutes"}
 
-  // If both are already captured by regex, skip AI entirely.
-  if (regexResult.price !== "Not specified" && regexResult.eta !== "Not specified") {
-    setCached(bidCache, cacheKey, regexResult);
-    return regexResult;
-  }
+If price is completely unclear, write "Not specified".
+If ETA is completely unclear, write "Not specified".`;
 
-  const prompt = `Extract only the explicitly stated bid details from this technician message.\nMessage: ${JSON.stringify(input)}\n\nReturn JSON with keys: price, eta.\nUse exactly "Not specified" for any missing field.`;
-
+  let raw = "";
   try {
-    const result = await generateWithFallback(prompt);
-    const raw = extractJsonObject(result.response.text());
-    const parsed = JSON.parse(raw) as Partial<BidExtraction>;
-
-    const finalResult: BidExtraction = {
-      price: typeof parsed.price === "string" && parsed.price.trim() ? parsed.price.trim() : regexResult.price,
-      eta: typeof parsed.eta === "string" && parsed.eta.trim() ? parsed.eta.trim() : regexResult.eta,
-    };
-
-    setCached(bidCache, cacheKey, finalResult);
-    return finalResult;
+    raw = await generate(prompt);
+    const e = JSON.parse(raw) as BidExtraction;
+    e.price = e.price?.trim() || "Not specified";
+    e.eta   = e.eta?.trim()   || "Not specified";
+    // Normalize — add "Rs." prefix if missing
+    if (e.price !== "Not specified" && !/^Rs\./i.test(e.price)) {
+      const num = e.price.replace(/[^0-9]/g, "");
+      if (num) e.price = `Rs. ${parseInt(num).toLocaleString()}`;
+    }
+    return e;
   } catch (err) {
-    console.error("[Gemini] extractBidDetails failed, using regex fallback:", err);
-    setCached(bidCache, cacheKey, regexResult);
-    return regexResult;
+    console.error("[Gemini] extractBidDetails failed:", raw, err);
+    return { price: "Not specified", eta: "Not specified" };
   }
+}
+
+// ── Greeting detection (no Gemini needed — pure string match) ─────────────────
+
+export function isGreeting(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return /^(hi|hello|hey|salam|assalam|aoa|helo|hii|helo|good morning|good evening|good afternoon|ok|okay|k|👋)/.test(t)
+    && t.length < 30;
+}
+
+// ── General question detection ────────────────────────────────────────────────
+
+export function looksLikeAdminCommand(text: string): boolean {
+  return text.trim().startsWith("/");
 }
