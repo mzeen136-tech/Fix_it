@@ -96,3 +96,31 @@ export function isGreeting(message: string): boolean {
     msg.includes("salam")
   );
 }
+
+// ─── EXTRA HELPERS REQUIRED BY FLOWS ─────────────────────────────────────────
+
+// Analyze general customer intent
+export async function analyzeCustomerMessage(message: string) {
+  return generateResponse({
+    action: "Analyze customer intent and summarize clearly",
+    text: message,
+  });
+}
+
+// Extract structured job details
+export async function extractJobDetails(message: string) {
+  return generateResponse({
+    action:
+      "Extract structured job details: problem, service type, location, urgency, budget (if any)",
+    text: message,
+  });
+}
+
+// Extract technician bid details
+export async function extractBidDetails(message: string) {
+  return generateResponse({
+    action:
+      "Extract bid details: price, time estimate, technician message",
+    text: message,
+  });
+}
