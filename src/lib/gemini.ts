@@ -81,3 +81,18 @@ export function looksLikeAdminCommand(message: string): boolean {
     msg.includes("register technician")
   );
 }
+// ─── GREETING DETECTOR (FIX) ────────────────────────────────────────────────
+export function isGreeting(message: string): boolean {
+  if (!message) return false;
+
+  const msg = message.toLowerCase().trim();
+
+  return (
+    msg === "hi" ||
+    msg === "hello" ||
+    msg === "hey" ||
+    msg === "assalamualaikum" ||
+    msg === "aoa" ||
+    msg.includes("salam")
+  );
+}
