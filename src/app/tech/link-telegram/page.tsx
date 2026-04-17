@@ -1,25 +1,20 @@
 "use client";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
-
-export const dynamic = "force-dynamic";
 
 export default function TelegramLinkPage() {
+  const [phone, setPhone] = useState("");
   const [chatId, setChatId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-  const searchParams = useSearchParams();
-
-  const phone = searchParams?.get("phone") || "";
 
   async function linkTelegram() {
-    if (!chatId.trim()) {
-      setError("Please enter your Telegram chat ID");
+    if (!phone.trim()) {
+      setError("Enter your WhatsApp phone number");
       return;
     }
-    if (!phone) {
-      setError("Phone number required");
+    if (!chatId.trim()) {
+      setError("Enter your Telegram chat ID");
       return;
     }
 
@@ -30,7 +25,7 @@ export default function TelegramLinkPage() {
       const res = await fetch("/api/tech/link-telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone_number: phone, telegram_chat_id: chatId.trim() }),
+        body: JSON.stringify({ phone_number: phone.trim(), telegram_chat_id: chatId.trim() }),
       });
 
       const data = await res.json();
@@ -61,6 +56,15 @@ export default function TelegramLinkPage() {
         <p style={{ color: "#888", textAlign: "center", marginBottom: 24 }}>Receive FREE job alerts via Telegram</p>
 
         <div style={{ background: "#161b22", borderRadius: 12, padding: 24, border: "1px solid #30363d" }}>
+          <label style={{ display: "block", marginBottom: 8, color: "#8b949e" }}>Your WhatsApp Number</label>
+          <input
+            type="text"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="923001234567"
+            style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #30363d", background: "#0d1117", color: "#fff", outline: "none", marginBottom: 16 }}
+          />
+
           <label style={{ display: "block", marginBottom: 8, color: "#8b949e" }}>Telegram Chat ID</label>
           <input
             type="text"
