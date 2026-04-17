@@ -138,12 +138,16 @@ async function dispatch(
   }
 
   // Find active approved techs for this trade
-  const { data: techs } = await supabase
+  const { data: techs, error: techsErr } = await supabase
     .from("technicians")
     .select("phone_number, name")
     .eq("trade", trade)
     .eq("is_active", true)
     .eq("approval_status", "approved");
+
+  if (techsErr) {
+    console.error("[Flow2] Technician query failed:", techsErr);
+  }
 
   if (!techs || techs.length === 0) {
     await sendWhatsAppMessage(customerPhone,
@@ -160,15 +164,25 @@ async function dispatch(
     `\nReply with your *price and ETA* to bid.\n` +
     `Example: "Rs. 2500, 30 minutes"`;
 
-  try {
-    await broadcastWhatsAppMessage(techs.map(t => t.phone_number), alert);
-  } catch (e) {
-    console.error("[Flow2] Broadcast error:", e);
+  const { sent, failed } = await broadcastWhatsAppMessage(
+    techs.map(t => t.phone_number),
+    alert
+  );
+
+  if (failed > 0) {
+    console.warn(`[Flow2] Job ${job.job_id}: ${sent} of ${techs.length} tech(s) reached`);
+  }
+
+  if (sent === 0) {
+    await sendWhatsAppMessage(customerPhone,
+      `😔 No ${trade}s are reachable right now. We'll try again shortly.`
+    );
+    return;
   }
 
   await sendWhatsAppMessage(customerPhone,
-    `✅ We've alerted *${techs.length} ${trade}(s)*. Bids coming your way soon!\n\nTo hire someone, reply:\n*ACCEPT [Name]*\nExample: ACCEPT Ali`
+    `✅ We've alerted *${sent} ${trade}(s)*. Bids coming your way soon!\n\nTo hire someone, reply:\n*ACCEPT [Name]*\nExample: ACCEPT Ali`
   );
 
-  console.log(`[Flow2] Job ${job.job_id} dispatched to ${techs.length} tech(s)`);
+  console.log(`[Flow2] Job ${job.job_id} dispatched — ${sent} sent, ${failed} failed`);
 }

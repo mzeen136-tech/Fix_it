@@ -62,14 +62,33 @@ export async function sendWhatsAppMessage(
 }
 
 // ── Broadcast: parallel send to multiple recipients ───────────────────────────
+// Uses Promise.allSettled so ONE failed delivery never kills the others.
+// Returns counts so callers can report accurate results to the customer.
 
 export async function broadcastWhatsAppMessage(
   recipients: string[],
   message: string
-): Promise<void> {
+): Promise<{ sent: number; failed: number }> {
   console.log(`[WA] Broadcasting to ${recipients.length} recipient(s)`);
-  // Promise.all: send all simultaneously, fail-fast on any throw
-  await Promise.all(recipients.map((phone) => sendWhatsAppMessage(phone, message)));
+
+  const results = await Promise.allSettled(
+    recipients.map((phone) => sendWhatsAppMessage(phone, message))
+  );
+
+  let sent = 0;
+  let failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") sent++;
+    else {
+      failed++;
+      console.error("[WA] Broadcast send failed:", r.reason);
+    }
+  }
+
+  if (failed > 0) {
+    console.warn(`[WA] Broadcast: ${sent} sent, ${failed} failed`);
+  }
+  return { sent, failed };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
