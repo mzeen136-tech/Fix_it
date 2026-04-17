@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { analyzeCustomerMessage, extractJobDetails } from "@/lib/gemini";
 import { broadcastWhatsAppMessage, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { broadcastTelegramMessage } from "@/lib/telegram";
 import { getConversation, saveConversation, clearConversation } from "@/lib/conversation";
 
 const SERVICES_MSG =
@@ -137,13 +138,15 @@ async function dispatch(
     return;
   }
 
-  // Find active approved techs for this trade
+  // Find active approved techs for this trade (with Telegram info)
   const { data: techs, error: techsErr } = await supabase
     .from("technicians")
-    .select("phone_number, name")
+    .select("phone_number, name, telegram_chat_id")
     .eq("trade", trade)
     .eq("is_active", true)
     .eq("approval_status", "approved");
+
+  console.log(`[Flow2] Found ${techs?.length || 0} techs for ${trade}:`, techs);
 
   if (techsErr) {
     console.error("[Flow2] Technician query failed:", techsErr);
@@ -164,25 +167,53 @@ async function dispatch(
     `\nReply with your *price and ETA* to bid.\n` +
     `Example: "Rs. 2500, 30 minutes"`;
 
-  const { sent, failed } = await broadcastWhatsAppMessage(
-    techs.map(t => t.phone_number),
-    alert
-  );
+  // Separate techs by channel
+  const telegramTechs = techs.filter(t => t.telegram_chat_id);
+  const whatsappTechs = techs.filter(t => !t.telegram_chat_id);
 
-  if (failed > 0) {
-    console.warn(`[Flow2] Job ${job.job_id}: ${sent} of ${techs.length} tech(s) reached`);
+  let telegramSent = 0;
+  let whatsappSent = 0;
+  let whatsappFailed = 0;
+
+  // Send via Telegram first (FREE)
+  if (telegramTechs.length > 0) {
+    const tgAlert = `🚨 *NEW JOB ALERT*\n🔧 ${trade}\n📋 ${summary}${locationStr ? `\n📍 ${locationStr}` : ""}\n\n💰 Reply with price & ETA to bid\nExample: Rs. 2500, 30 min`;
+    
+    const tgButtons = [{ text: "💬 Reply on WhatsApp", url: `https://wa.me/${process.env.WHATSAPP_PHONE_NUMBER_ID}` }];
+    
+    const tgResult = await broadcastTelegramMessage(
+      telegramTechs.map(t => ({ chatId: t.telegram_chat_id, name: t.name })),
+      tgAlert,
+      tgButtons
+    );
+    telegramSent = tgResult.sent;
+    console.log(`[Flow2] Telegram: ${telegramSent} sent, ${tgResult.failed} failed`);
   }
 
-  if (sent === 0) {
+  // Fall back to WhatsApp for techs without Telegram
+  if (whatsappTechs.length > 0) {
+    const waResult = await broadcastWhatsAppMessage(
+      whatsappTechs.map(t => t.phone_number),
+      alert
+    );
+    whatsappSent = waResult.sent;
+    whatsappFailed = waResult.failed;
+  }
+
+  const totalSent = telegramSent + whatsappSent;
+  const totalFailed = whatsappFailed;
+
+  if (totalSent === 0) {
     await sendWhatsAppMessage(customerPhone,
       `😔 No ${trade}s are reachable right now. We'll try again shortly.`
     );
     return;
   }
 
+  const tgMsg = telegramSent > 0 ? ` (${telegramSent} via Telegram)` : "";
   await sendWhatsAppMessage(customerPhone,
-    `✅ We've alerted *${sent} ${trade}(s)*. Bids coming your way soon!\n\nTo hire someone, reply:\n*ACCEPT [Name]*\nExample: ACCEPT Ali`
+    `✅ We've alerted *${totalSent} ${trade}(s)*${tgMsg}. Bids coming your way soon!\n\nTo hire someone, reply:\n*ACCEPT [Name]*\nExample: ACCEPT Ali`
   );
 
-  console.log(`[Flow2] Job ${job.job_id} dispatched — ${sent} sent, ${failed} failed`);
+  console.log(`[Flow2] Job ${job.job_id} dispatched — ${totalSent} sent, ${totalFailed} failed`);
 }

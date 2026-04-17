@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   // Get tech profile
   const { data: tech } = await supabase
     .from("technicians")
-    .select("name,trade,city,area,experience_years,total_jobs_done,is_active,approval_status,created_at")
+    .select("phone_number,name,trade,city,area,experience_years,total_jobs_done,is_active,approval_status,created_at,telegram_chat_id")
     .eq("phone_number", phone)
     .single();
 

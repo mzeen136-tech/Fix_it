@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface TechProfile {
+  phone_number: string;
   name: string; trade: string; city: string|null; area: string|null;
   experience_years: number; total_jobs_done: number; is_active: boolean;
-  approval_status: string; created_at: string;
+  approval_status: string; created_at: string; telegram_chat_id: string | null;
 }
 interface Job {
   job_id: string; trade_required: string; problem_summary: string;
@@ -145,6 +146,25 @@ export default function TechDashboard() {
                 آپ کا اکاؤنٹ زیر جائزہ ہے۔
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Telegram not linked notice */}
+        {!tech.telegram_chat_id && tech.approval_status === "approved" && (
+          <div style={{ background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:10,
+            padding:"14px 18px", marginBottom:20, display:"flex", gap:10, alignItems:"center" }}>
+            <span style={{ fontSize:20 }}>✈️</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:600, color:"#1d4ed8", fontSize:14 }}>Get FREE Job Alerts!</div>
+              <div style={{ color:"#6b7280", fontSize:13, marginTop:2 }}>
+                Link Telegram to receive instant job notifications - completely FREE!
+              </div>
+            </div>
+            <a href={`/tech/link-telegram?phone=${encodeURIComponent(data?.tech?.phone_number || "")}`}
+              style={{ padding:"8px 16px", borderRadius:8, background:"#1d4ed8", color:"#fff",
+                fontSize:13, fontWeight:600, textDecoration:"none" }}>
+              Link Telegram
+            </a>
           </div>
         )}
 
