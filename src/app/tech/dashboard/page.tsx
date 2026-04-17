@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 interface TechProfile {
   phone_number: string;
   name: string; trade: string; city: string|null; area: string|null;

@@ -1,6 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 
 export default function TelegramLinkPage() {
   const [chatId, setChatId] = useState("");
@@ -9,7 +11,7 @@ export default function TelegramLinkPage() {
   const [success, setSuccess] = useState(false);
   const searchParams = useSearchParams();
 
-  const phone = searchParams.get("phone") || "";
+  const phone = searchParams?.get("phone") || "";
 
   async function linkTelegram() {
     if (!chatId.trim()) {
