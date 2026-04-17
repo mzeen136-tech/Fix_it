@@ -116,7 +116,11 @@ async function dispatch(
       : `⏳ Finding available ${rawTrade}s near you…`
   );
 
+  console.log(`[Flow2] dispatch called with: rawTrade=${rawTrade}, rawProblem=${rawProblem.substring(0, 50)}`);
+  
   const { trade, summary } = await extractJobDetails(rawProblem);
+  
+  console.log(`[Flow2] extractJobDetails returned: trade=${trade}, summary=${summary.substring(0, 50)}`);
 
   const { data: job, error: jobErr } = await supabase
     .from("active_jobs")
@@ -139,6 +143,15 @@ async function dispatch(
   }
 
   // Find active approved techs for this trade (with Telegram info)
+  console.log(`[Flow2] Looking for techs: trade=${trade}, is_active=true, approval_status=approved`);
+  
+  const { data: allTechsForTrade, error: allTechsErr } = await supabase
+    .from("technicians")
+    .select("phone_number, name, telegram_chat_id, is_active, approval_status, trade")
+    .eq("trade", trade);
+
+  console.log(`[Flow2] All techs for ${trade} (before filtering):`, allTechsForTrade);
+
   const { data: techs, error: techsErr } = await supabase
     .from("technicians")
     .select("phone_number, name, telegram_chat_id")
@@ -146,7 +159,7 @@ async function dispatch(
     .eq("is_active", true)
     .eq("approval_status", "approved");
 
-  console.log(`[Flow2] Found ${techs?.length || 0} techs for ${trade}:`, techs);
+  console.log(`[Flow2] Filtered techs for ${trade}:`, techs);
 
   if (techsErr) {
     console.error("[Flow2] Technician query failed:", techsErr);
