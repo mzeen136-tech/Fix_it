@@ -35,3 +35,6 @@ next-env.d.ts
 
 # os
 .DS_Store
+
+.vercel
+.env*.local
