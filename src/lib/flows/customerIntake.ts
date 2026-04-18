@@ -79,6 +79,7 @@ export async function handleCustomerIntake(
 
   // Has problem but no location
   if (analysis.has_problem && !analysis.has_location) {
+    console.log(`[Flow2] No location provided, asking for city/area. trade=${analysis.trade}, problem=${analysis.summary?.substring(0, 30)}`);
     await saveConversation(customerPhone, {
       state: "awaiting_location",
       partial_problem: analysis.summary,

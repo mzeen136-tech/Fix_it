@@ -89,14 +89,17 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 4: Tech lookup ───────────────────────────────────────────────────
+    console.log(`[Route] Checking tech: ${senderPhone}`);
     const { data: techRow } = await supabase
       .from("technicians")
-      .select("phone_number, approval_status")
+      .select("phone_number, name, is_active, approval_status")
       .eq("phone_number", senderPhone)
-      .eq("is_active", true)
       .maybeSingle();
 
-    const isTech = !!techRow && techRow.approval_status === "approved";
+    console.log(`[Route] Tech lookup result:`, techRow);
+
+    const isTech = !!techRow && techRow.is_active === true && techRow.approval_status === "approved";
+    console.log(`[Route] isTech = ${isTech} (is_active=${techRow?.is_active}, approval_status=${techRow?.approval_status})`);
 
     if (techRow && techRow.approval_status === "pending") {
       await sendWhatsAppMessage(senderPhone,

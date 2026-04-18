@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // ── Model setup ───────────────────────────────────────────────────────────────
 // Uses lazy init — no crash if env vars missing at module load time.
-// Primary:  gemini-2.5-flash-lite  (fast, cheap — your preference)
+// Primary:  gemini-2.5-flash-lite  (fast, cheap - no preview suffix)
 // Backup:   gemini-2.5-flash       (smarter, used if primary fails)
 
 function getModels() {
@@ -10,7 +10,7 @@ function getModels() {
   const backupKey = process.env.GEMINI_BACKUP_API_KEY || key;
   if (!key) throw new Error("[Gemini] GEMINI_API_KEY is not set in environment");
 
-  const primary = new GoogleGenerativeAI(key).getGenerativeModel({ model: "gemini-2.5-flash-lite-preview-06-17" });
+  const primary = new GoogleGenerativeAI(key).getGenerativeModel({ model: "gemini-2.5-flash-lite" });
   const backup  = new GoogleGenerativeAI(backupKey!).getGenerativeModel({ model: "gemini-2.5-flash" });
   return { primary, backup };
 }
