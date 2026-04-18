@@ -64,18 +64,16 @@ export async function sendJobAlertTemplate(
 ): Promise<void> {
   const templateName = process.env.WHATSAPP_JOB_ALERT_TEMPLATE;
 
-  // No template configured — use plain text
+  console.log(`[WA] sendJobAlertTemplate called: to=${to}, template=${templateName}, trade=${trade}`);
+
+  // No template configured — FAIL loudly (Meta blocks plain text to new contacts)
   if (!templateName) {
-    const msg =
-      `🚨 *NEW JOB ALERT*\n` +
-      `🔧 Trade: ${trade}\n` +
-      `📋 Problem: ${summary}\n` +
-      (location ? `📍 Location: ${location}\n` : "") +
-      `\nReply with your *price and ETA* to bid.\nExample: "Rs. 2500, 30 minutes"`;
-    return sendWhatsAppMessage(to, msg);
+    console.error(`[WA] ❌ WHATSAPP_JOB_ALERT_TEMPLATE not set! Template required for tech notifications.`);
+    throw new Error("WHATSAPP_JOB_ALERT_TEMPLATE env var must be set in Vercel");
   }
 
-  // Use approved template
+  // Use approved template - single param with full job info
+  const jobInfo = `${trade} repair job${location ? ` in ${location}` : ""}`;
   const payload = JSON.stringify({
     messaging_product: "whatsapp",
     to,
@@ -87,9 +85,7 @@ export async function sendJobAlertTemplate(
         {
           type: "body",
           parameters: [
-            { type: "text", text: trade },
-            { type: "text", text: summary },
-            { type: "text", text: location || "Not specified" },
+            { type: "text", text: jobInfo },
           ],
         },
       ],
