@@ -64,7 +64,12 @@ export async function sendJobAlertTemplate(
 ): Promise<void> {
   const templateName = process.env.WHATSAPP_JOB_ALERT_TEMPLATE;
 
-  console.log(`[WA] sendJobAlertTemplate called: to=${to}, template=${templateName}, trade=${trade}`);
+  console.log(`[WA] sendJobAlertTemplate called:`);
+  console.log(`  - to: ${to}`);
+  console.log(`  - templateName: "${templateName}"`);
+  console.log(`  - trade: ${trade}`);
+  console.log(`  - summary: ${summary?.substring(0, 50)}`);
+  console.log(`  - location: ${location}`);
 
   // No template configured — FAIL loudly (Meta blocks plain text to new contacts)
   if (!templateName) {

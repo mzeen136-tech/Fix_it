@@ -151,14 +151,17 @@ async function dispatch(
 
   console.log(`[Flow2] All techs for ${trade} (before filtering):`, allTechsForTrade);
 
+  console.log(`[Flow2] Querying techs: trade=${trade}, is_active=true, approval_status=approved`);
+
   const { data: techs, error: techsErr } = await supabase
     .from("technicians")
-    .select("phone_number, name, telegram_chat_id")
-    .eq("trade", trade)
-    .eq("is_active", true)
-    .eq("approval_status", "approved");
+    .select("phone_number, name, telegram_chat_id, is_active, approval_status")
+    .eq("trade", trade);
 
-  console.log(`[Flow2] Filtered techs for ${trade}:`, techs);
+  console.log(`[Flow2] All ${trade} techs (no filters):`, techs?.map(t => `${t.name} (${t.phone_number}) - active:${t.is_active} approved:${t.approval_status}`));
+
+  const activeTechs = techs?.filter(t => t.is_active === true && t.approval_status === "approved") || [];
+  console.log(`[Flow2] Active approved techs:`, activeTechs.map(t => t.name));
 
   if (techsErr) {
     console.error("[Flow2] Technician query failed:", techsErr);
@@ -172,13 +175,11 @@ async function dispatch(
   }
 
   // Use WhatsApp (approved template) for all techs
-  await broadcastJobAlert(
-    techs.map(t => t.phone_number),
-    trade,
-    summary,
-    locationStr || ""
-  );
-  const totalSent = techs.length;
+  const techPhones = activeTechs.map(t => t.phone_number);
+  console.log(`[Flow2] Sending job alerts to ${techPhones.length} techs:`, techPhones);
+
+  await broadcastJobAlert(techPhones, trade, summary, locationStr || "");
+  const totalSent = activeTechs.length;
 
   if (totalSent === 0) {
     await sendWhatsAppMessage(customerPhone,
