@@ -1,82 +1,12 @@
-// WhatsApp Cloud API sender utility
-// Handles single sends and parallel broadcast with exponential-backoff retry.
-// Uses template messages for business-initiated outreach (required by Meta)
-
 const BASE_URL = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
-interface WhatsAppError {
-  error?: {
-    message?: string;
-    type?: string;
-    code?: number;
-    error_data?: {
-      messaging_product?: string;
-      details?: string;
-    };
-  };
-}
-
-// ── Template message sender ───────────────────────────────────────────────────
-// Meta requires template messages for business-initiated conversations
-// Template must be created in Meta Business Console: https://business.facebook.com/
-
-async function sendTemplateMessage(to: string, body: string): Promise<boolean> {
-  // Template payload - will fail if template doesn't exist, which is expected
-  const templatePayload = JSON.stringify({
-    messaging_product: "whatsapp",
-    to,
-    type: "template",
-    template: {
-      name: "job_alert",
-      language: { code: "en_US" },
-      components: [
-        {
-          type: "body",
-          parameters: [
-            { type: "text", text: body.slice(0, 60) }
-          ]
-        }
-      ]
-    }
-  });
-
-  const res = await fetch(BASE_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: templatePayload,
-  });
-
-  if (!res.ok) {
-    const err: WhatsAppError = await res.json().catch(() => ({}));
-    console.warn(`[WA] Template failed for ${to}: ${res.status} - ${err?.error?.message || 'unknown'}`);
-    return false;
-  }
-
-  return true;
-}
-
-// ── Core sender with retry + fallback ─────────────────────────────────────────
+// ── Core text sender with retry + exponential back-off ────────────────────────
 
 export async function sendWhatsAppMessage(
   to: string,
   body: string,
   maxRetries = 3
 ): Promise<void> {
-  // First try template message (required for business-initiated outreach)
-  try {
-    const templateWorked = await sendTemplateMessage(to, body);
-    if (templateWorked) {
-      console.log(`[WA] ✅ Template sent to ${to}`);
-      return;
-    }
-  } catch (e) {
-    console.warn(`[WA] Template attempt failed:`, e);
-  }
-
-  // If template fails, try free-form text (works if customer replied within 24h)
   const payload = JSON.stringify({
     messaging_product: "whatsapp",
     to,
@@ -86,7 +16,6 @@ export async function sendWhatsAppMessage(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     let res: Response;
-
     try {
       res = await fetch(BASE_URL, {
         method: "POST",
@@ -96,77 +25,131 @@ export async function sendWhatsAppMessage(
         },
         body: payload,
       });
-    } catch (networkErr) {
-      if (attempt === maxRetries) {
-        console.error(`[WA] Network error after ${maxRetries} attempts to ${to}:`, networkErr);
-        throw networkErr;
-      }
+    } catch (netErr) {
+      if (attempt === maxRetries) throw netErr;
       await sleep(backoff(attempt));
       continue;
     }
 
-    if (res.ok) {
-      console.log(`[WA] ✅ Free-form sent to ${to}`);
-      return;
-    }
+    if (res.ok) { console.log(`[WA] ✅ Text sent to ${to}`); return; }
 
     const errBody = await res.json().catch(() => ({}));
-    console.error(`[WA] ❌ Failed to send to ${to} (${res.status}):`, errBody);
-
-    // Don't throw for 4xx - just log and return
-    if (res.status >= 400 && res.status < 500) {
-      console.warn(`[WA] Client error ${res.status} for ${to}`);
-      return;
+    if ((res.status === 429 || res.status >= 500) && attempt < maxRetries) {
+      console.warn(`[WA] ${res.status} — retry ${attempt}/${maxRetries}`);
+      await sleep(backoff(attempt));
+      continue;
     }
-
-    if (res.status === 429 || res.status >= 500) {
-      if (attempt < maxRetries) {
-        console.warn(`[WA] ${res.status} on attempt ${attempt}/${maxRetries}. Retrying…`);
-        await sleep(backoff(attempt));
-        continue;
-      }
-    }
-
-    throw new Error(`WhatsApp API error ${res.status}: ${JSON.stringify(errBody)}`);
+    console.error(`[WA] ❌ Failed to ${to} (${res.status}):`, errBody);
+    throw new Error(`WA API ${res.status}: ${JSON.stringify(errBody)}`);
   }
 }
 
-// ── Broadcast ─────────────────────────────────────────────────────────────────
+// ── Template sender — for approved WhatsApp Business templates ────────────────
+// Used for tech job alerts: Meta requires approved templates for outbound messages
+// to users who haven't messaged in the last 24 hours.
+//
+// Set WHATSAPP_JOB_ALERT_TEMPLATE in Vercel env vars = your approved template name.
+// Template must have these body parameters in order:
+//   {{1}} = trade (e.g. "HVAC")
+//   {{2}} = problem summary
+//   {{3}} = location (or "Not specified")
+//
+// If template name is not set, falls back to plain text.
+
+export async function sendJobAlertTemplate(
+  to: string,
+  trade: string,
+  summary: string,
+  location: string
+): Promise<void> {
+  const templateName = process.env.WHATSAPP_JOB_ALERT_TEMPLATE;
+
+  // No template configured — use plain text
+  if (!templateName) {
+    const msg =
+      `🚨 *NEW JOB ALERT*\n` +
+      `🔧 Trade: ${trade}\n` +
+      `📋 Problem: ${summary}\n` +
+      (location ? `📍 Location: ${location}\n` : "") +
+      `\nReply with your *price and ETA* to bid.\nExample: "Rs. 2500, 30 minutes"`;
+    return sendWhatsAppMessage(to, msg);
+  }
+
+  // Use approved template
+  const payload = JSON.stringify({
+    messaging_product: "whatsapp",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: "en" },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: trade },
+            { type: "text", text: summary },
+            { type: "text", text: location || "Not specified" },
+          ],
+        },
+      ],
+    },
+  });
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(BASE_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: payload,
+      });
+    } catch (netErr) {
+      if (attempt === 3) throw netErr;
+      await sleep(backoff(attempt));
+      continue;
+    }
+
+    if (res.ok) { console.log(`[WA] ✅ Template sent to ${to}`); return; }
+
+    const errBody = await res.json().catch(() => ({}));
+    console.warn(`[WA] Template failed (${res.status}), falling back to text:`, errBody);
+    // Template failed — fall back to plain text immediately
+    const msg =
+      `🚨 *NEW JOB ALERT*\n🔧 Trade: ${trade}\n📋 Problem: ${summary}\n` +
+      (location ? `📍 Location: ${location}\n` : "") +
+      `\nReply with your *price and ETA* to bid.\nExample: "Rs. 2500, 30 minutes"`;
+    return sendWhatsAppMessage(to, msg);
+  }
+}
+
+// ── Broadcast: send to multiple techs using template ──────────────────────────
+
+export async function broadcastJobAlert(
+  recipients: string[],
+  trade: string,
+  summary: string,
+  location: string
+): Promise<void> {
+  console.log(`[WA] Broadcasting job alert to ${recipients.length} tech(s)`);
+  await Promise.allSettled(
+    recipients.map(phone => sendJobAlertTemplate(phone, trade, summary, location))
+  );
+}
+
+// ── Plain broadcast (used for non-job messages) ───────────────────────────────
 
 export async function broadcastWhatsAppMessage(
   recipients: string[],
   message: string
-): Promise<{ sent: number; failed: number }> {
-  console.log(`[WA] Broadcasting to ${recipients.length} recipient(s):`, recipients);
-
-  const results = await Promise.allSettled(
-    recipients.map((phone) => sendWhatsAppMessage(phone, message))
+): Promise<void> {
+  await Promise.allSettled(
+    recipients.map(phone => sendWhatsAppMessage(phone, message))
   );
-
-  let sent = 0;
-  let failed = 0;
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    const phone = recipients[i];
-    if (r.status === "fulfilled") {
-      sent++;
-      console.log(`[WA] ✅ Delivered to ${phone}`);
-    } else {
-      failed++;
-      console.error(`[WA] ❌ Failed to ${phone}:`, r.reason);
-    }
-  }
-
-  console.warn(`[WA] Broadcast: ${sent} sent, ${failed} failed`);
-  return { sent, failed };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function backoff(attempt: number) {
-  return Math.min(Math.pow(2, attempt) * 1000, 10_000);
-}
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+function backoff(attempt: number) { return Math.min(Math.pow(2, attempt) * 1000, 10_000); }

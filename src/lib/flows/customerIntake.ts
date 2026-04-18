@@ -190,9 +190,10 @@ async function dispatch(
 
   // Send via Telegram first (FREE)
   if (telegramTechs.length > 0) {
+    const adminPhone = process.env.ADMIN_PHONE || "";
     const tgAlert = `🚨 *NEW JOB ALERT*\n🔧 ${trade}\n📋 ${summary}${locationStr ? `\n📍 ${locationStr}` : ""}\n\n💰 Reply with price & ETA to bid\nExample: Rs. 2500, 30 min`;
     
-    const tgButtons = [{ text: "💬 Reply on WhatsApp", url: `https://wa.me/${process.env.WHATSAPP_PHONE_NUMBER_ID}` }];
+    const tgButtons = [{ text: "💬 Reply on WhatsApp", url: `https://wa.me/${adminPhone}?text=I'm%20interested%20in%20this%20job` }];
     
     const tgResult = await broadcastTelegramMessage(
       telegramTechs.map(t => ({ chatId: t.telegram_chat_id, name: t.name })),

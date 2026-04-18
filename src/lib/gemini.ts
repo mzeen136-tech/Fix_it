@@ -46,7 +46,7 @@ const VALID_TRADES = ["Plumber","Electrician","HVAC","Carpenter","Painter","Othe
 const TRADE_KEYWORDS: Record<string, string[]> = {
   HVAC:        ["ac","a/c","air condition","hvac","cooling","heater","heating","geyser",
                  "geysir","air cool","ac not","gas leakage","kharab ac","thanda nahi",
-                 "theek nai","theek nahi","cool","coolant"],
+                 "theek nai","theek nahi","cool","coolant","not working","not cool","habas","garmi","garam","room hot","house hot","temperature nai","temp nai"],
   Plumber:     ["water","pipe","leak","tap","flush","toilet","drain","sewage","plumb",
                  "nali","pani","nal","blockage","choked","naali"],
   Electrician: ["electric","light","power","wiring","switch","socket","mcb","short circuit",
@@ -72,7 +72,7 @@ const FAQ_PATTERNS = [
   "what service","which service","kya service","what do you","how does","kya karte",
   "kya offer","tell me about","what kind","what type","apkon si services","konsi services",
   "kya facilities","kya milta","explain","about you","what is this","who are you",
-  "timing","hours","coverage","rate kya","charges kya","kitna charge",
+  "timing","hours","coverage","rate kya","charges kya","kitna charge","someone named","previously worked","contact karo","number chahiye",
 ];
 
 const GREETING_PATTERN =
