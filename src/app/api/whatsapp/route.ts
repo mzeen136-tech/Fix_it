@@ -67,11 +67,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "ok" }, { status: 200 });
     }
 
-    // ── Step 2: Block non-text with no active conversation ────────────────────
-    if (messageType !== "text") {
+    // ── Step 2: Handle button clicks ────────────────────────────────────────
+    if (messageType === "button") {
+      console.log(`[Route] Button click from ${senderPhone}, checking if tech...`);
+      // Check if it's a tech
+      const { data: techRow } = await supabase
+        .from("technicians")
+        .select("phone_number, name, is_active, approval_status, trade")
+        .eq("phone_number", senderPhone)
+        .maybeSingle();
+
+      const isTech = !!techRow && techRow.is_active === true && techRow.approval_status === "approved";
+
+      if (isTech) {
+        // Tech clicked BID - ask them to reply with price
+        await sendWhatsAppMessage(senderPhone,
+          `👋 Thanks ${techRow.name}! To place your bid, please reply with:\n\n*Price and ETA*\n\nExample: "Rs. 2500, 30 minutes"`
+        );
+        return NextResponse.json({ status: "ok" }, { status: 200 });
+      }
+
+      // Customer clicked something - check if there's an open job
       const { data: conv } = await supabase
         .from("conversation_state").select("state")
         .eq("phone", senderPhone).maybeSingle();
+
       if (!conv || conv.state === "idle") {
         await sendWhatsAppMessage(senderPhone,
           "📸 We got your file! Please *describe your problem in text* so we can find the right technician.\n\nExample: \"My kitchen pipe is leaking\" or \"AC is not cooling\""
