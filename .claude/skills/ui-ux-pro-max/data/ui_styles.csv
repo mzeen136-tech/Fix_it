@@ -1,0 +1,11 @@
+name,description,use_cases,key_characteristics
+Glassmorphism,Translucent frosted-glass effect with backdrop blur,Dashboards, modern apps,macOS-style interfaces,backdrop-filter blur, transparency, subtle borders, floating cards
+Neumorphism,Soft extruded plastic look with subtle shadows,Consumer apps, playful interfaces,low contrast shadows, same-color highlights, soft depth
+Brutalism,Raw bold high-contrast design,Portfolios, edgy brands, startups,large typography, stark colors, unpolished aesthetic
+Minimalism,Clean simple essential-only design,SaaS, productivity apps, whitespace, limited colors, essential elements only
+Material Design,Paper-like layers with realistic shadows,Android apps, Google products,elevation system, ripple effects, FAB buttons
+iOS Human Interface,Translucency, blur, system materials,iOS apps, Apple ecosystem,sf-symbols, blur materials, safe areas
+Claymorphism,Friendly rounded 3D clay-like appearance,Children apps, friendly interfaces,rounded corners, soft shadows, pastel colors
+Retro/Vintage,Nostalgic design from past eras,Themed apps, games,authentic period colors, textures, typography
+Dark Mode First,Optimized for dark environments first,Developer tools, media apps,true black backgrounds, reduced eye strain
+Gradient Heavy,Bold vibrant gradient backgrounds,Creative apps, landing pages,mesh gradients, vibrant colors, modern feel

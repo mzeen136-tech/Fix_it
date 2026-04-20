@@ -4,6 +4,7 @@ import { handleAdminCommand }       from "@/lib/flows/adminCommand";
 import { handleCustomerIntake }     from "@/lib/flows/customerIntake";
 import { handleTechnicianBid }      from "@/lib/flows/technicianBid";
 import { handleCustomerAcceptance } from "@/lib/flows/customerAccept";
+import { handleJobButtonClick }     from "@/lib/flows/jobButtonClick";
 import { sendWhatsAppMessage }      from "@/lib/whatsapp";
 import { isGreeting, looksLikeAdminCommand } from "@/lib/gemini";
 
@@ -69,7 +70,15 @@ export async function POST(req: NextRequest) {
 
     // ── Step 2: Handle button clicks ────────────────────────────────────────
     if (messageType === "button") {
-      console.log(`[Route] Button click from ${senderPhone}, checking if tech...`);
+      const buttonPayload = message.button?.payload;
+      console.log(`[Route] Button click from ${senderPhone}, payload=${buttonPayload}`);
+
+      // Check if it's a job alert button (ACCEPT_JOB / REJECT_JOB)
+      if (buttonPayload === "ACCEPT_JOB" || buttonPayload === "REJECT_JOB") {
+        await handleJobButtonClick(senderPhone, buttonPayload);
+        return NextResponse.json({ status: "ok" }, { status: 200 });
+      }
+
       // Check if it's a tech
       const { data: techRow } = await supabase
         .from("technicians")

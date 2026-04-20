@@ -154,12 +154,21 @@ async function dispatch(
 
   console.log(`[Flow2] Querying techs: trade=${trade}, is_active=true, approval_status=approved`);
 
+  console.log(`[Flow2] DB query: looking for trade="${trade}"`);
+
   const { data: techs, error: techsErr } = await supabase
     .from("technicians")
-    .select("phone_number, name, telegram_chat_id, is_active, approval_status")
-    .eq("trade", trade);
+    .select("phone_number, name, telegram_chat_id, is_active, approval_status, trade");
 
-  console.log(`[Flow2] All ${trade} techs (no filters):`, techs?.map(t => `${t.name} (${t.phone_number}) - active:${t.is_active} approved:${t.approval_status}`));
+  console.log(`[Flow2] Raw DB result:`, techs);
+
+  const filteredTechs = techs?.filter(t => 
+    t.trade?.toLowerCase() === trade.toLowerCase() && 
+    t.is_active === true && 
+    t.approval_status === "approved"
+  ) || [];
+  
+  console.log(`[Flow2] Filtered ${trade} techs:`, filteredTechs.map(t => `${t.name} (${t.phone_number})`));
 
   const activeTechs = techs?.filter(t => t.is_active === true && t.approval_status === "approved") || [];
   console.log(`[Flow2] Active approved techs:`, activeTechs.map(t => t.name));
@@ -168,7 +177,7 @@ async function dispatch(
     console.error("[Flow2] Technician query failed:", techsErr);
   }
 
-  if (!techs || techs.length === 0) {
+  if (filteredTechs.length === 0) {
     await sendWhatsAppMessage(customerPhone,
       `😔 No ${trade}s are available right now. We'll notify you as soon as one is free.`
     );
@@ -176,18 +185,13 @@ async function dispatch(
   }
 
   // Use WhatsApp (approved template) for all techs
-  const techPhones = activeTechs.map(t => t.phone_number);
+  const techPhones = filteredTechs.map(t => t.phone_number);
   console.log(`[Flow2] Sending job alerts to ${techPhones.length} techs:`, techPhones);
 
-  await broadcastJobAlert(techPhones, trade, summary, locationStr || "");
-  const totalSent = activeTechs.length;
+  await broadcastJobAlert(techPhones, job.job_id, trade, locationStr || "", summary);
+  const totalSent = filteredTechs.length;
 
-  if (totalSent === 0) {
-    await sendWhatsAppMessage(customerPhone,
-      `😔 No ${trade}s are reachable right now. We'll try again shortly.`
-    );
-    return;
-  }
+  console.log(`[Flow2] Job dispatched! ${totalSent} techs notified`);
 
   await sendWhatsAppMessage(customerPhone,
     `✅ We've alerted *${totalSent} ${trade}(s)*. Bids coming your way soon!\n\nTo hire someone, reply:\n*ACCEPT [Name]*\nExample: ACCEPT Ali`

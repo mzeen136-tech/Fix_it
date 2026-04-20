@@ -1,189 +1,254 @@
+Here’s a clean **“OpenCode-ready explanation + implementation spec”** of what you built, why you built it this way, and how your code should now behave.
 
-Apr 18 18:42:36.56
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:36.20
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:35.96
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:33.55
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-2
-[WA] ✅ Text sent to 923455060752
-Apr 18 18:42:20.44
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:16.99
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:16.41
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:10.77
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:10.11
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:07.98
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:07.83
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-Apr 18 18:42:03.59
-POST
-200
-fix-it-git-main-mzeen136-techs-projects.vercel.app
-/api/whatsapp
-23
-[Flow2] Job 0bb299f3-828c-4147-822c-60ba698639cf dispatched — 1 sent
-No more logs to show within selected timeline
+You can paste this directly into your project docs or OpenCode notes.
 
+---
 
+# 🧠 WhatsApp Template: `job_assigned` (SYSTEM DESIGN EXPLAINED)
 
+## 📌 What we built
 
+We created a **WhatsApp Utility template** called:
 
+```text id="tpl1"
+job_assigned
+```
 
-# Vercel Runtime Log
+This template is used to:
+👉 Notify technicians about a new job assignment
+👉 Allow them to respond instantly (ACCEPT / REJECT)
 
-## Request
-ID: grcbl-1776519753556-a1e092b35e52
-Time: 2026-04-18T13:42:33.556Z
-POST /api/whatsapp → 200
-Host: fix-it-git-main-mzeen136-techs-projects.vercel.app
-Duration: 1658ms
-Cache: MISS
-Region: cle1
-User Agent: facebookexternalua
+---
 
-## Lifecycle
+# 🎯 Why we designed it this way
 
-### Function
-Status: 200
-Duration: 1571ms
-Runtime: nodejs24.x
-Memory: 275MB / 2048MB
-Region: iad1
+## 1. Utility classification (important for delivery)
 
-## External APIs (2)
-GET nndwnefcixkjuphymblw.supabase.co/rest/v1/conversation_state → 200 1064ms
-POST graph.facebook.com/v21.0/1084410291416827/messages → 200 470ms
+We structured it as a **Utility message**, not marketing.
 
-## Deployment
-ID: dpl_2wwXPg2tWAscPwZfHqrAhNRZpJii
-Environment: production
-Branch: main
+✔ Reason:
 
+* Job dispatch = transactional system message
+* Higher delivery rate
+* Lower risk of rejection or throttling
 
+---
 
-2026-04-18 13:42:33.667 [info] [SnapFix] button from 923455060752: ""
-2026-04-18 13:42:35.207 [info] [WA] ✅ Text sent to 923455060752
+## 2. Structured data format (machine-friendly)
 
+### Body:
 
+```text id="body1"
+New job assigned: {{1}}
 
+Trade: {{2}}
+Location: {{3}}
 
+Job details:
+{{4}}
 
+Please respond to accept or reject this job.
+```
 
+### Why:
 
+* Each variable maps directly to DB fields
+* Easy parsing in logs and analytics
+* Consistent formatting for technicians
 
+---
 
+## 3. Variables mapping (critical for OpenCode logic)
 
-# Vercel Runtime Log
+| Variable | Meaning             | Example         |
+| -------- | ------------------- | --------------- |
+| {{1}}    | Job ID              | JOB-10492       |
+| {{2}}    | Trade               | Electrician     |
+| {{3}}    | Location            | Islamabad       |
+| {{4}}    | Problem description | Fan not working |
 
-## Request
-ID: mtn2d-1776519723597-a8cf7a256072
-Time: 2026-04-18T13:42:03.597Z
-POST /api/whatsapp → 200
-Host: fix-it-git-main-mzeen136-techs-projects.vercel.app
-Duration: 5936ms
-Cache: MISS
-Region: cle1
-User Agent: facebookexternalua
+---
 
-## Lifecycle
+## 4. Quick Reply Buttons (core interaction design)
 
-### Function
-Status: 200
-Duration: 5821ms
-Runtime: nodejs24.x
-Memory: 288MB / 2048MB
-Region: iad1
+We added:
 
-## External APIs (9)
-GET nndwnefcixkjuphymblw.supabase.co/rest/v1/technicians, nndwnefcixkjuphymblw.supabase.co/rest/v1/conversation_state ×2 → 200/406 796-1344ms
-DELETE nndwnefcixkjuphymblw.supabase.co/rest/v1/conversation_state → 204 290ms
-POST graph.facebook.com/v21.0/1084410291416827/messages → 200 677ms
-POST nndwnefcixkjuphymblw.supabase.co/rest/v1/active_jobs → 201 286ms
-GET nndwnefcixkjuphymblw.supabase.co/rest/v1/technicians ×2 → 200 289-732ms
-POST graph.facebook.com/v21.0/1084410291416827/messages ×2 → 200 500-582ms
+### Button 1:
 
-## Deployment
-ID: dpl_2wwXPg2tWAscPwZfHqrAhNRZpJii
-Environment: production
-Branch: main
+```text id="btn1"
+ACCEPT
+```
 
+### Button 2:
 
+```text id="btn2"
+REJECT
+```
 
+---
 
+### Why buttons instead of text?
 
+✔ Faster response (1 tap vs typing)
+✔ Higher acceptance rate
+✔ Easier webhook handling
+✔ Cleaner automation flow
 
+---
 
+# ⚙️ HOW OPEN CODE SHOULD IMPLEMENT THIS
 
-2026-04-18 13:42:03.998 [info] [SnapFix] text from 923203056885: "Fan not working, Islamabad"
-2026-04-18 13:42:03.998 [info] [Route] Checking tech: 923203056885
-2026-04-18 13:42:05.351 [info] [Route] Tech lookup result: null
-2026-04-18 13:42:05.351 [info] [Route] isTech = false (is_active=undefined, approval_status=undefined)
-2026-04-18 13:42:07.123 [info] [WA] ✅ Text sent to 923203056885
-2026-04-18 13:42:07.123 [info] [Flow2] dispatch called with: rawTrade=HVAC, rawProblem=Fan not working, Islamabad
-2026-04-18 13:42:07.124 [info] [Flow2] extractJobDetails returned: trade=HVAC, summary=Fan not working, Islamabad
-2026-04-18 13:42:07.413 [info] [Flow2] Looking for techs: trade=HVAC, is_active=true, approval_status=approved
-2026-04-18 13:42:08.148 [info] [Flow2] All techs for HVAC (before filtering): [
-  {
-    phone_number: '923455060752',
-    name: 'zain',
-    telegram_chat_id: '5798553462',
-    is_active: true,
-    approval_status: 'approved',
-    trade: 'HVAC'
+## 1. Sending template message
+
+Your backend should call WhatsApp Cloud API like:
+
+```js id="api1"
+{
+  "messaging_product": "whatsapp",
+  "to": technician_phone,
+  "type": "template",
+  "template": {
+    "name": "job_assigned",
+    "language": { "code": "en" },
+    "components": [
+      {
+        "type": "body",
+        "parameters": [
+          { "type": "text", "text": jobId },
+          { "type": "text", "text": trade },
+          { "type": "text", "text": location },
+          { "type": "text", "text": summary }
+        ]
+      }
+    ]
   }
-]
-2026-04-18 13:42:08.148 [info] [Flow2] Querying techs: trade=HVAC, is_active=true, approval_status=approved
-2026-04-18 13:42:08.439 [info] [Flow2] All HVAC techs (no filters): [ 'zain (923455060752) - active:true approved:approved' ]
-2026-04-18 13:42:08.440 [info] [Flow2] Active approved techs: [ 'zain' ]
-2026-04-18 13:42:08.440 [info] [Flow2] Sending job alerts to 1 techs: [ '923455060752' ]
-2026-04-18 13:42:08.440 [info] [WA] Broadcasting job alert to 1 tech(s)
-2026-04-18 13:42:08.440 [info] [WA] sendJobAlertTemplate called:
-2026-04-18 13:42:08.440 [info] - to: 923455060752
-2026-04-18 13:42:08.441 [info] - templateName: "job_alert"
-2026-04-18 13:42:08.441 [info] - trade: HVAC
-2026-04-18 13:42:08.441 [info] - summary: Fan not working, Islamabad
-2026-04-18 13:42:08.441 [info] - location: islamabad
-2026-04-18 13:42:08.942 [info] [WA] ✅ Template sent to 923455060752
-2026-04-18 13:42:09.524 [info] [WA] ✅ Text sent to 923203056885
-2026-04-18 13:42:09.524 [info] [Flow2] Job 0bb299f3-828c-4147-822c-60ba698639cf dispatched — 1 sent
+}
+```
+
+---
+
+## 2. Button response handling (VERY IMPORTANT)
+
+When technician clicks:
+
+### 👉 ACCEPT
+
+Webhook payload:
+
+```text id="w1"
+button_payload = "ACCEPT"
+```
+
+### Logic:
+
+```js id="logic1"
+if (payload === "ACCEPT") {
+  assignJobToTechnician();
+  sendConfirmation();
+  stopBroadcasting();
+}
+```
+
+---
+
+### 👉 REJECT
+
+```js id="logic2"
+if (payload === "REJECT") {
+  markJobAsRejected();
+  findNextTechnician();
+}
+```
+
+---
+
+# 🔄 FULL SYSTEM FLOW
+
+## Step 1
+
+Customer sends job → system extracts:
+
+* trade
+* location
+* problem
+
+---
+
+## Step 2
+
+System finds technicians:
+
+```text id="flow1"
+trade + is_active + approved
+```
+
+---
+
+## Step 3
+
+Send WhatsApp template:
+
+```text id="flow2"
+job_assigned → technician
+```
+
+---
+
+## Step 4
+
+Technician responds via buttons:
+
+* ACCEPT → job locked
+* REJECT → reroute
+
+---
+
+# 🧩 Why this architecture works
+
+### ✔ Scalable
+
+You can add 1000+ technicians
+
+### ✔ Event-driven
+
+Everything runs from webhook events
+
+### ✔ Stateless messaging
+
+WhatsApp = trigger layer, DB = source of truth
+
+### ✔ Low latency dispatch
+
+Instant routing possible
+
+---
+
+# ⚠️ Critical things to ensure in OpenCode
+
+### 1. Always log webhook responses
+
+You must capture:
+
+* message sent
+* delivered
+* button clicks
+
+---
+
+### 2. Normalize phone numbers
+
+```js id="fix1"
+phone = phone.replace(/\D/g, "");
+```
+
+---
+
+### 3. Prevent duplicate job assignment
+
+Use:
+
+```text id="lock"
+job_status = "dispatched"
+```
+
+also it does not mean you send to only one tech...if he did not respond workflow will be stuck there.....

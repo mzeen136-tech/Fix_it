@@ -1,0 +1,21 @@
+rule,category,description,anti_pattern
+Contrast ratio 4.5:1 minimum,Accessibility,All text must meet WCAG AA contrast requirements,Gray text on gray backgrounds
+Touch targets 44x44px minimum,Interaction,All tappable elements must meet minimum size,Tiny icons without expanded hit areas
+Visible focus states,Accessibility,Interactive elements show clear focus indicators,Removing default focus outlines
+Loading state feedback,Interaction,Show spinner or skeleton during async operations,Button appears unresponsive during load
+Error messages near field,Forms,Display validation errors close to the problem field,Errors only at top of form
+Placeholder is not a label,Forms,Always use visible labels, not just placeholders,Placeholder-only inputs
+Mobile-first responsive,Layout,Design for mobile first then scale up,Desktop-first with broken mobile
+Horizontal scroll never,Layout,Content must fit viewport width on mobile,Horizontal scrolling on mobile
+Animation 150-300ms,Interaction,Micro-interactions should be snappy,Instant changes or slow animations
+Motion conveys meaning,Interaction,Animations should express cause and effect,Decorative animations without purpose
+One primary CTA per screen,Navigation,Each screen should have one main action,Multiple competing CTAs
+Bottom nav max 5 items,Navigation,Bottom navigation limited to top-level destinations,Overloaded bottom navigation
+Back button predictable,Navigation,Back behavior should be consistent and expected,Back exits app unexpectedly
+Skeleton for slow loads,Performance,Show placeholder for content loading over 300ms,Blank screen during load
+Lazy load below fold,Performance,Defer loading of off-screen content,Loading all images at once
+Keyboard navigable,Accessibility,Full functionality available via keyboard,Mouse-only interactions
+Alt text for images,Accessibility,Meaningful images need descriptive alt text,Missing or generic alt text
+Color not only indicator,Accessibility,Use icons or text in addition to color,Red alone means error
+Safe area respected,Layout,Content stays within device safe areas,Content under notch or gesture bar
+Dark mode parity,Theming,Both themes must have equal contrast and clarity,Dark mode as afterthought

@@ -58,18 +58,20 @@ export async function sendWhatsAppMessage(
 
 export async function sendJobAlertTemplate(
   to: string,
+  jobId: string,
   trade: string,
-  summary: string,
-  location: string
+  location: string,
+  details: string
 ): Promise<void> {
   const templateName = process.env.WHATSAPP_JOB_ALERT_TEMPLATE;
 
   console.log(`[WA] sendJobAlertTemplate called:`);
   console.log(`  - to: ${to}`);
   console.log(`  - templateName: "${templateName}"`);
+  console.log(`  - jobId: ${jobId}`);
   console.log(`  - trade: ${trade}`);
-  console.log(`  - summary: ${summary?.substring(0, 50)}`);
   console.log(`  - location: ${location}`);
+  console.log(`  - details: ${details?.substring(0, 50)}`);
 
   // No template configured — FAIL loudly (Meta blocks plain text to new contacts)
   if (!templateName) {
@@ -77,8 +79,7 @@ export async function sendJobAlertTemplate(
     throw new Error("WHATSAPP_JOB_ALERT_TEMPLATE env var must be set in Vercel");
   }
 
-  // Use approved template - single param with full job info
-  const jobInfo = `${trade} repair job${location ? ` in ${location}` : ""}`;
+  // Use approved template with 4 variables + Accept/Reject buttons
   const payload = JSON.stringify({
     messaging_product: "whatsapp",
     to,
@@ -90,12 +91,29 @@ export async function sendJobAlertTemplate(
         {
           type: "body",
           parameters: [
-            { type: "text", text: jobInfo },
+            { type: "text", text: jobId },
+            { type: "text", text: trade },
+            { type: "text", text: location },
+            { type: "text", text: details },
           ],
+        },
+        {
+          type: "button",
+          sub_type: "quick_reply",
+          index: 0,
+          parameters: [{ type: "payload", payload: "ACCEPT_JOB" }],
+        },
+        {
+          type: "button",
+          sub_type: "quick_reply",
+          index: 1,
+          parameters: [{ type: "payload", payload: "REJECT_JOB" }],
         },
       ],
     },
   });
+
+  console.log(`[WA] Sending template to ${to}, payload:`, payload);
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     let res: Response;
@@ -109,18 +127,21 @@ export async function sendJobAlertTemplate(
         body: payload,
       });
     } catch (netErr) {
+      console.error(`[WA] Network error:`, netErr);
       if (attempt === 3) throw netErr;
       await sleep(backoff(attempt));
       continue;
     }
 
+    const resBody = await res.json().catch(() => ({}));
+    console.log(`[WA] API response (${res.status}):`, JSON.stringify(resBody));
+
     if (res.ok) { console.log(`[WA] ✅ Template sent to ${to}`); return; }
 
-    const errBody = await res.json().catch(() => ({}));
-    console.warn(`[WA] Template failed (${res.status}), falling back to text:`, errBody);
+    console.warn(`[WA] Template failed (${res.status}):`, resBody);
     // Template failed — fall back to plain text immediately
     const msg =
-      `🚨 *NEW JOB ALERT*\n🔧 Trade: ${trade}\n📋 Problem: ${summary}\n` +
+      `🚨 *NEW JOB ALERT*\n🔧 Trade: ${trade}\n📋 Problem: ${details}\n` +
       (location ? `📍 Location: ${location}\n` : "") +
       `\nReply with your *price and ETA* to bid.\nExample: "Rs. 2500, 30 minutes"`;
     return sendWhatsAppMessage(to, msg);
@@ -131,13 +152,14 @@ export async function sendJobAlertTemplate(
 
 export async function broadcastJobAlert(
   recipients: string[],
+  jobId: string,
   trade: string,
-  summary: string,
-  location: string
+  location: string,
+  details: string
 ): Promise<void> {
   console.log(`[WA] Broadcasting job alert to ${recipients.length} tech(s)`);
   await Promise.allSettled(
-    recipients.map(phone => sendJobAlertTemplate(phone, trade, summary, location))
+    recipients.map(phone => sendJobAlertTemplate(phone, jobId, trade, location, details))
   );
 }
 

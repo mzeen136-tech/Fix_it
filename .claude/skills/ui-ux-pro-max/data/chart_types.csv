@@ -1,0 +1,16 @@
+chart_type,data_type,use_case,library
+Bar Chart,Categorical comparison,Sales by category, performance metrics,Chart.js, Recharts
+Line Chart,Time series,Trends over time, stock prices,Recharts, Victory
+Pie Chart,Part-to-whole,Budget breakdown (max 5 categories),Chart.js
+Donut Chart,Part-to-whole,Progress, distribution with center label,Recharts, Chart.js
+Area Chart,Time series with volume,Cumulative totals, stacked data,Recharts, Victory
+Scatter Plot,Correlation,Relationship between two variables,D3.js, Victory
+Bubble Chart,Three variables,Size + position comparisons,D3.js
+Heat Map,Matrix data,Activity calendars, density maps,Recharts
+Treemap,Hierarchical,Nested categories, file systems,D3.js
+Funnel Chart,Conversion,Marketing/sales funnel,Recharts
+Gauge/Donut,Single metric,KPI dashboards, progress indicators,Recharts
+Radar Chart,Multivariate,Skill comparison, product features,Chart.js, Recharts
+Box Plot,Distribution,Statistical spread, outliers,D3.js
+Candlestick,Financial,Stock price movements,Victory
+Combo Chart,Mixed types,Bar + line for different metrics,Recharts, Chart.js

@@ -1,0 +1,16 @@
+type,industry,audience,key_features,design_priority
+SaaS Dashboard,Tech,Business users,Data visualization, quick actions,Clarity, information hierarchy
+E-commerce Store,Retail,Shoppers,Product grid, cart, checkout,Trust, conversion optimization
+Healthcare Portal,Health,Patients/Providers,Appointments, records, telehealth,Accessibility, HIPAA compliance
+Fintech App,Finance,Consumers/Business,Transactions, investments, payments,Security perception, data clarity
+Food Delivery,Food,Hungry customers,Restaurant browsing, order tracking,Speed, appetite appeal
+Real Estate,Property,Buyers/Renters,Property search, filters, virtual tours,Visual hierarchy, image quality
+Education Platform,EdTech,Students/Teachers,Courses, assignments, progress tracking,Engagement, readability
+Fitness App,Health,Fitness enthusiasts,Workouts, progress, community,Motivation, action clarity
+Beauty Spa,Wellness,Clients,Booking, services, gallery,Relaxation, elegance
+Legal Services,Professional,Clients,Consultation booking, documents,Trust, professionalism
+Travel App,Tourism,Travelers,Search, booking, itinerary,Inspiration, ease of use
+Music App,Entertainment,Listeners,Playback, discovery, playlists,Immersion, content focus
+Social Media,Social,General users,Feed, messaging, sharing,Engagement, scrollability
+Crypto/Web3,Finance,Tech-savvy,Wallet, trading, NFTs,Trust, complexity management
+Admin Panel,Tech,Administrators,Tables, forms, settings,Efficiency, data density

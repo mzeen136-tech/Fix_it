@@ -255,9 +255,10 @@ async function dispatch(
   try {
     await broadcastJobAlert(
       techs.map(t => t.phone_number),
+      job.job_id,
       safeTrade,
-      summary,
-      locationStr
+      locationStr,
+      summary
     );
   } catch (e) {
     console.error("[Flow2] Broadcast error:", e);
