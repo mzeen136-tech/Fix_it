@@ -13,6 +13,24 @@ const SERVICES_MSG =
   `🎨 *Painter* — interior & exterior painting\n\n` +
   `Just describe your problem and your city/area — we'll find you someone fast! 🚀`;
 
+function makeTradeJobLabel(trade: string, jobNumber: number): string {
+  const cleanTrade = trade.trim().replace(/\s+/g, " ").toUpperCase();
+  return `${cleanTrade}-${jobNumber}`;
+}
+
+async function getNextTradeJobNumber(trade: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("active_jobs")
+    .select("job_id", { count: "exact", head: true })
+    .eq("trade_required", trade);
+
+  if (error) {
+    console.error("[Flow2] Failed to count jobs for trade label:", error);
+  }
+
+  return (count ?? 0) + 1;
+}
+
 export async function handleCustomerIntake(
   customerPhone: string,
   messageText: string
@@ -142,6 +160,11 @@ async function dispatch(
     return;
   }
 
+  const jobNumber = await getNextTradeJobNumber(trade);
+  const jobLabel = makeTradeJobLabel(trade, jobNumber);
+
+  console.log(`[Flow2] Job created: ${jobLabel} (${job.job_id})`);
+
   // Find active approved techs for this trade (with Telegram info)
   console.log(`[Flow2] Looking for techs: trade=${trade}, is_active=true, approval_status=approved`);
   
@@ -188,7 +211,7 @@ async function dispatch(
   const techPhones = filteredTechs.map(t => t.phone_number);
   console.log(`[Flow2] Sending job alerts to ${techPhones.length} techs:`, techPhones);
 
-  await broadcastJobAlert(techPhones, job.job_id, trade, locationStr || "", summary);
+  await broadcastJobAlert(techPhones, jobLabel, trade, locationStr || "", summary);
   const totalSent = filteredTechs.length;
 
   console.log(`[Flow2] Job dispatched! ${totalSent} techs notified`);
@@ -197,5 +220,5 @@ async function dispatch(
     `✅ We've alerted *${totalSent} ${trade}(s)*. Bids coming your way soon!\n\nTo hire someone, reply:\n*ACCEPT [Name]*\nExample: ACCEPT Ali`
   );
 
-  console.log(`[Flow2] Job ${job.job_id} dispatched — ${totalSent} sent`);
+  console.log(`[Flow2] Job ${jobLabel} dispatched — ${totalSent} sent`);
 }

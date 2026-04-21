@@ -23,11 +23,24 @@ function isContactRequest(text: string): boolean {
 }
 
 // ── Generate clean human-readable job reference ───────────────────────────────
-// job_number is a SERIAL column — auto-increments per row.
-// Result: SF-0001, SF-0042, SF-1337
+// Result: HVAC-1, ELECTRICIAN-2, PLUMBER-3
 
-function makeJobRef(jobNumber: number): string {
-  return `SF-${String(jobNumber).padStart(4, "0")}`;
+function makeTradeJobLabel(trade: string, jobNumber: number): string {
+  const cleanTrade = trade.trim().replace(/\s+/g, " ").toUpperCase();
+  return `${cleanTrade}-${jobNumber}`;
+}
+
+async function getNextTradeJobNumber(trade: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("active_jobs")
+    .select("job_id", { count: "exact", head: true })
+    .eq("trade_required", trade);
+
+  if (error) {
+    console.error("[Flow2] Failed to count jobs for trade label:", error);
+  }
+
+  return (count ?? 0) + 1;
 }
 
 export async function handleCustomerIntake(
@@ -161,7 +174,7 @@ async function dispatch(
     );
     await sendWhatsAppMessage(customerPhone,
       `⏳ You already have an active *${existingJob.trade_required}* job ` +
-      `(${makeJobRef(existingJob.job_number)}, posted ${ageMinutes} min ago).\n\n` +
+      `(posted ${ageMinutes} min ago).\n\n` +
       `Technicians are reviewing it. Bids coming soon!`
     );
     return;
@@ -196,8 +209,8 @@ async function dispatch(
     return;
   }
 
-  // ── Clean human-readable reference: SF-0042 ───────────────────────────────
-  const jobRef = makeJobRef(job.job_number);
+  const jobNumber = await getNextTradeJobNumber(trade);
+  const jobRef = makeTradeJobLabel(trade, jobNumber);
   console.log(`[Flow2] Job created: ${jobRef} (${job.job_id})`);
 
   // Find active approved techs for this trade (single clean query)
@@ -217,7 +230,7 @@ async function dispatch(
     return;
   }
 
-  // Broadcast using clean SF-XXXX reference in template {{1}}
+  // Broadcast using clean TRADE-N reference in template {{1}}
   const techPhones = techs.map(t => t.phone_number);
   await broadcastJobAlert(techPhones, jobRef, trade, locationStr || "", summary);
 

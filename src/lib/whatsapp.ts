@@ -50,15 +50,16 @@ export async function sendWhatsAppMessage(
 //
 // Set WHATSAPP_JOB_ALERT_TEMPLATE in Vercel env vars = your approved template name.
 // Template must have these body parameters in order:
-//   {{1}} = trade (e.g. "HVAC")
-//   {{2}} = problem summary
-//   {{3}} = location (or "Not specified")
+//   {{1}} = job label (e.g. "HVAC-1")
+//   {{2}} = trade (e.g. "HVAC")
+//   {{3}} = problem summary
+//   {{4}} = location (or "Not specified")
 //
 // If template name is not set, falls back to plain text.
 
 export async function sendJobAlertTemplate(
   to: string,
-  jobId: string,
+  jobLabel: string,
   trade: string,
   location: string,
   details: string
@@ -68,7 +69,7 @@ export async function sendJobAlertTemplate(
   console.log(`[WA] sendJobAlertTemplate called:`);
   console.log(`  - to: ${to}`);
   console.log(`  - templateName: "${templateName}"`);
-  console.log(`  - jobId: ${jobId}`);
+  console.log(`  - jobLabel: ${jobLabel}`);
   console.log(`  - trade: ${trade}`);
   console.log(`  - location: ${location}`);
   console.log(`  - details: ${details?.substring(0, 50)}`);
@@ -91,7 +92,7 @@ export async function sendJobAlertTemplate(
         {
           type: "body",
           parameters: [
-            { type: "text", text: jobId },
+            { type: "text", text: jobLabel },
             { type: "text", text: trade },
             { type: "text", text: location },
             { type: "text", text: details },
@@ -141,7 +142,7 @@ export async function sendJobAlertTemplate(
     console.warn(`[WA] Template failed (${res.status}):`, resBody);
     // Template failed — fall back to plain text immediately
     const msg =
-      `🚨 *NEW JOB ALERT*\n🔧 Trade: ${trade}\n📋 Problem: ${details}\n` +
+      `🚨 *NEW JOB ALERT*\n🆔 Job: ${jobLabel}\n🔧 Trade: ${trade}\n📋 Problem: ${details}\n` +
       (location ? `📍 Location: ${location}\n` : "") +
       `\nReply with your *price and ETA* to bid.\nExample: "Rs. 2500, 30 minutes"`;
     return sendWhatsAppMessage(to, msg);
@@ -152,14 +153,14 @@ export async function sendJobAlertTemplate(
 
 export async function broadcastJobAlert(
   recipients: string[],
-  jobId: string,
+  jobLabel: string,
   trade: string,
   location: string,
   details: string
 ): Promise<void> {
   console.log(`[WA] Broadcasting job alert to ${recipients.length} tech(s)`);
   await Promise.allSettled(
-    recipients.map(phone => sendJobAlertTemplate(phone, jobId, trade, location, details))
+    recipients.map(phone => sendJobAlertTemplate(phone, jobLabel, trade, location, details))
   );
 }
 
